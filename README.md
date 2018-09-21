@@ -16,5 +16,5 @@ people can easily fork and modify a single package.
 The rolls, gender split, and ethnic breakdown for all New Zealand
 schools from 2000 to 2017
 
-nzherald/SchoolRollNZ
+[nzherald/SchoolRollNZ]
 
