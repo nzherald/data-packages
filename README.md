@@ -16,5 +16,18 @@ people can easily fork and modify a single package.
 The rolls, gender split, and ethnic breakdown for all New Zealand
 schools from 2000 to 2017
 
-https://github.com/nzherald/SchoolRollNZ
+[SchoolRollNZ](https://github.com/nzherald/SchoolRollNZ)
+
+### ANZSCO codes
+
+Occupation definitions from the Australian Bureau of Statistics and 
+Statistics New Zealand in a longform format.
+
+[ANZSCO](https://github.com/nzherald/ANZSCO)
+
+### 1891 New Zealand Census Occupations
+
+Occupations as reported in the 1891 New Zealand census. Gender and age breakdown.
+
+[OccupationsNZ1891](https://github.com/nzherald/OccupationsNZ1891)
 
