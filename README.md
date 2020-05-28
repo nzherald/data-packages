@@ -6,7 +6,7 @@ This file was last modified on 28 May 2020 - if it is now much later than that t
 
 There was a long gap in releasing packages here, for various reasons R data packages weren't the
 best fit for what we were doing. But we have started again with
-[nzhCovid19Docs](https://github.com/nzherald/nzhCovid19Docs).
+[pandemicpapers](https://github.com/nzherald/pandemicpapers).
 
 The repository now also contains some of the scripts used to create the data packages (in the `src`)
 directory. These rely on [DataPackageR](https://github.com/ropensci/DataPackageR).
@@ -24,7 +24,7 @@ people can easily fork and modify a single package.
 Text extracted from pdf documents released as part of the governments proactive release of 
 Covid-19 related documents.
 
-[nzhCovid19Docs](https://github.com/nzherald/nzhCovid19Docs)
+[pandemicpapers](https://github.com/nzherald/pandemicpapers)
 
 ### New Zealand School Rolls
 

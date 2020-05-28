@@ -4,7 +4,7 @@ library(DataPackageR)
 library(here)
 
 pkgdir <- here("..")
-pkgname <- "nzhCovid19Docs"
+pkgname <- "pandemicpapers"
 pkg <- file.path(pkgdir, pkgname)
 
 datapackage_skeleton(
@@ -14,4 +14,3 @@ datapackage_skeleton(
   path = pkgdir)
 
 package_build(packageName = pkg)
-  
