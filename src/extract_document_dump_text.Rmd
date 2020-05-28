@@ -1,0 +1,195 @@
+
+# Covid-19 Documents
+
+On May 8th the government proactively released 325 documents related to decision making during the
+response to Covid 19.
+
+These documents can be found https://covid19.govt.nz/resources/key-documents-and-legislation/proactive-release/
+
+This code downloads all the documents and then extracts the text from each page of the document.
+
+```{r, include=F}
+library(tidyverse)
+library(rvest)
+library(pdftools)
+library(tesseract)
+
+pdf_path <- fs::path_join(c(project_path(), "documents", "originals"))
+image_path <- fs::path_join(c(project_path(), "documents", "extracts"))
+
+# Check for directories
+
+if (!fs::dir_exists(pdf_path)) {
+  fs::dir_create(pdf_path)
+}
+if (!fs::dir_exists(image_path)) {
+  fs::dir_create(image_path)
+}
+
+```
+
+# Download the files
+
+
+The documents were sorted into 9 categories - but the actual documents were all stored in on
+directory.
+
+The first step is extract the document links from the category pages
+
+```{r}
+base_url <- "https://covid19.govt.nz/resources/key-documents-and-legislation/proactive-release/"
+
+categories <- tribble(
+  ~category, ~category_title,
+  "alert-levels-and-restrictions/", "Alert Levels and Restrictions",
+  "health-response/", "Health Response",
+  "offshore-issues/", "Offshore Issues",
+  "border/", "Border",
+  "housing/", "Housing",
+  "supporting-the-economy/", "Supporting the Economy",
+  "education/", "Education",
+  "income-support-measures/", "Income Support Measures",
+  "wage-subsidy-and-leave-schemes/", "Wage Subsidy and Leave Schemes"
+)
+
+
+get_category_docs <- function(category, category_title) {
+  doctable <- read_html(paste0(base_url, category)) %>%
+    html_node("table") %>%
+    html_node("tbody")
+  tibble(
+    title = doctable %>% html_nodes("td:nth-child(1) a") %>% html_text(),
+    link = doctable %>% html_nodes("td:nth-child(1) a") %>% html_attr("href"),
+    doc_date = doctable %>% html_nodes("td:nth-child(2)") %>% html_text() %>% parse_date("%d %B %Y"),
+    doc_type = doctable %>% html_nodes("td:nth-child(3)") %>% html_text(),
+    category = category_title,
+    release = as.Date("2020-05-08")
+  )
+}
+
+category_meta <- pmap_dfr(categories, get_category_docs)
+```
+
+Once we have a list of documents links then we should download all the documents
+
+```{r}
+get_documents <- function(link) {
+  target <- fs::path_join(
+    c(pdf_path, str_remove(link, "/assets/resources/proactive-release/"))
+  )
+  if (!fs::file_exists(target)) {
+    download.file(paste0("https://covid19.govt.nz", link), target)
+  }
+  return(target)
+}
+
+downloaded_documents <- category_meta %>%
+  mutate(path = pmap_chr(category_meta %>% select(link), get_documents))
+```
+
+The go through the documents and extract all the text - this is text that can be selected
+and copied from the pdf.
+
+```{r}
+covid_doc_pages <- downloaded_documents %>%
+  mutate(text = map(path, pdf_text)) %>%
+  pmap_dfr(function(title, link, release, doc_date, doc_type, category, path, text) {
+    tibble(
+      release = release,
+      category = category,
+      title = title,
+      link = paste0("https://covid19.govt.nz", link),
+      path = path,
+      doc_date = doc_date,
+      doc_type = doc_type,
+      page = seq_len(length(text)),
+      text = unlist(text)
+    )
+  })
+```
+
+Now we need to extract images from the pdf documents and get a list of those
+images the run OCR over.
+
+This works quite well for this document dump because the watermark is text over the
+images so it does not interfere with the OCR. If the watermark had been embedded in
+image then another step to try and remove the watermark with something like OpenCV would
+be required - well maybe not required, but would make it more desirable.
+
+The `extract_images` function relies on poppler being installed on the path. Poppler is needed for
+for the `pdftools`package so it should be there if you are running this script.
+
+```{r}
+extract_images <- function(path) {
+  frag <- fs::path_ext_remove(path) %>% fs::path_file()
+  extract_dir <- fs::path_join(c(image_path, frag))
+  if (!fs::dir_exists(extract_dir)) {
+    fs::dir_create(extract_dir)
+    processx::run("pdfimages", c("-png", "-p", path, fs::path_join(c(extract_dir, "page"))))
+  }
+  images <- fs::dir_ls(extract_dir)
+  if (length(images) == 0) {
+    tibble(path = path, images = NA)
+  } else {
+    tibble(path = path, images = images)
+  }
+}
+
+doc_images <- downloaded_documents %>% select(path) %>% pmap_dfr(extract_images)
+```
+
+Now we have a whole pile of images we can run ocr via the `tesseract` package on them.
+
+```{r}
+cached_ocr <- function(img) {
+  txt <- fs::path_ext_set(img, "txt")
+  if (!fs::file_exists(txt)) {
+    write_file(tesseract::ocr(img), txt)
+  }
+  read_file(txt)
+}
+extract_ocr_text <- function(path, images) {
+  page <- str_match(images, "-(\\d\\d\\d)-") %>% nth(2) %>% as.numeric()
+  part <- str_match(images, "-(\\d\\d\\d).png") %>% nth(2) %>% as.numeric()
+  text <- images %>% map_chr(cached_ocr)
+  tibble(
+    path = path,
+    images = images,
+    page = page,
+    part = part,
+    ocr = text)
+}
+
+doc_ocr_text <- doc_images %>% filter(!is.na(images)) %>% pmap_dfr(extract_ocr_text)
+```
+
+Then we add the OCR text as an additional column to the set of actual text pdf pages.
+
+```{r}
+covid_docs <- covid_doc_pages %>%
+  left_join(
+      doc_ocr_text %>%
+        filter(str_length(ocr) > 60) %>%
+        arrange(path, path, part) %>%
+        group_by(path, page) %>%
+        summarise(ocr = toString(ocr)), by = c("path", "page")) %>%
+    ungroup() %>%
+    select(-path) %>%
+    arrange(category, title, page)
+```
+
+And we save a csv and excel version of the paages into the external data directory of
+the package.
+
+```{r}
+covid_docs %>%
+  write_csv(fs::path_join(c(project_extdata_path(), "covid_docs.csv")))
+covid_docs %>%
+  writexl::write_xlsx(fs::path_join(c(project_extdata_path(),
+        "covid_docs.xlsx")))
+```
+
+
+
+
+
